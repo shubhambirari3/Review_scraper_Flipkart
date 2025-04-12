@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Results - Review Miner{% endblock %}
+{% block content %}
+<div class="container mt-4">
+    <h2> {% if site == 'flipkart' %}Flipkart.com{% else %}Amazon.in{% endif %} | {{ product }}</h2>
+    <div class="mb-3">
+        <p>Total Reviews: {{ reviews|length }} | Average Rating: {{ avg_rating|round(1) }} / 5</p>
+        <form method="GET" class="d-flex flex-wrap gap-2">
+            <select name="sort_by" class="form-select w-auto" onchange="this.form.submit()">
+                <option value="">Sort By</option>
+                <option value="rating_asc" {% if sort_by == 'rating_asc' %}selected{% endif %}>Rating: Ascending</option>
+                <option value="rating_desc" {% if sort_by == 'rating_desc' %}selected{% endif %}>Rating: Descending</option>
+                <option value="date_asc" {% if sort_by == 'date_asc' %}selected{% endif %}>Reviewed On: Ascending</option>
+                <option value="date_desc" {% if sort_by == 'date_desc' %}selected{% endif %}>Reviewed On: Descending</option>
+            </select>
+            <a href="{{ url_for('download_csv', product=product, site=site) }}" class="btn btn-success">Download CSV</a>
+        </form>
+    </div>
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Product</th>
+                <th>Customer Name</th>
+                <th>Rating</th>
+                <th>Heading</th>
+                <th>Comment</th>
+                <th>Reviewed On</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for review in reviews %}
+            <tr>
+                <td>{{ review['Product'] }}</td>
+                <td>{{ review['Name'] }}</td>
+                <td>{{ review['Rating'] }}</td>
+                <td>{{ review['CommentHead'] }}</td>
+                <td>{{ review['Comment'] }}</td>
+                <td>{{ review['Reviewed On'] }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
