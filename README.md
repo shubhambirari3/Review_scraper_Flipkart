@@ -20,7 +20,7 @@ The application uses Flask to handle HTTP requests and manage the scraping proce
 1. **Scraping Libraries**: The project uses libraries like `BeautifulSoup` and `requests` to scrape reviews from target platforms.
 2. **Endpoints**: Flask routes are defined to trigger the scraping process. For example:
    - `/scrape`: Initiates the scraping process for a specific platform.
-3. **Data Storage**: Scraped data is stored in a database (e.g., MongoDB or PostgreSQL) for easy retrieval and analysis.
+3. **Data Storage**: Scraped data is stored in a database (we can use e.g., MongoDB or PostgreSQL) for easy retrieval and analysis.
 4. **Error Handling**: Flask handles errors gracefully, ensuring the application remains robust during scraping.
 
 `
@@ -42,7 +42,7 @@ Follow these steps to set up the project on your local machine:
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/shubhambirari3/review_scrapper.git
+   git clone https://github.com/shubhambirari3/Review_scraper_Flipkart.git
    cd review_scrapper
    ```
 
