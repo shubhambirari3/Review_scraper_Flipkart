@@ -98,7 +98,7 @@ def load_user():
 # Scrape reviews function for Flipkart
 def scrape_reviews(all_reviews_url, num_reviews, product_name):
     session = requests.Session()
-    retries = Retry(total=3, backoff_factor=1, status_forcelist=[403, 429, 500, 502, 503, 504])
+    retries = Retry(total=2, backoff_factor=2, status_forcelist=[429, 500, 502, 503, 504])
     session.mount('https://', HTTPAdapter(max_retries=retries))
     
     reviews = []
@@ -107,13 +107,13 @@ def scrape_reviews(all_reviews_url, num_reviews, product_name):
 
     while len(reviews) < num_reviews and page_url:
         try:
-            response = session.get(page_url, headers=HEADERS, timeout=10)
+            response = session.get(page_url, headers=HEADERS, timeout=20)
             response.raise_for_status()
             logger.info(f"Fetched page: {page_url}")
         except requests.exceptions.RequestException as e:
-            logger.error(f"Error fetching reviews page: {e}")
-            raise Exception(f"Error fetching reviews page: {str(e)}")
-
+            logger.error(f"Failed to fetch reviews page after retries: {e}")
+            return reviews
+        
         soup = BeautifulSoup(response.text, 'html.parser')
         review_containers = soup.find_all('div', class_='EPCmJX')
 
@@ -140,7 +140,7 @@ def scrape_reviews(all_reviews_url, num_reviews, product_name):
         next_button = soup.find('a', class_='_9QVEpD', string=lambda t: 'Next' in t if t else False)
         next_href = next_button['href'] if next_button and next_button.get('href') else None
         page_url = urljoin(base_url, next_href) if next_href else None
-        time.sleep(5)  # Increased delay for Render
+        time.sleep(8)
 
     return reviews
 
@@ -229,7 +229,7 @@ def review():
     product_url = request.form['product_url']
     logger.info(f"Product URL: {product_url}")
     try:
-        num_reviews = min(int(request.form['num_reviews']), 100)
+        num_reviews = min(int(request.form['num_reviews']), 10)  # Cap at 10
         if num_reviews <= 0:
             raise ValueError("Number of reviews must be positive.")
     except ValueError:
@@ -251,15 +251,11 @@ def review():
     reviews_url = product_url.replace('/p/', '/product-reviews/')
     logger.info(f"Scraping reviews for {product_name}")
 
-    try:
-        reviews = scrape_reviews(reviews_url, num_reviews, product_name)
-    except Exception as e:
-        logger.error(f"Scraping error: {e}")
-        return render_template('index.html', error=str(e), current_user=request.current_user)
+    reviews = scrape_reviews(reviews_url, num_reviews, product_name)
 
     if not reviews:
         logger.warning(f"No reviews found for {product_name}")
-        return render_template('results.html', reviews=[], product=product_name, site='flipkart', avg_rating=0, sort_by="", current_user=request.current_user, message="No reviews found for this product.")
+        return render_template('results.html', reviews=[], product=product_name, site='flipkart', avg_rating=0, sort_by="", current_user=request.current_user, message="No reviews found for this product or the request timed out.")
 
     try:
         with sqlite3.connect(DB_PATH) as conn:
