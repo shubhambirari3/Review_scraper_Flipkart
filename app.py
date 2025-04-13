@@ -46,6 +46,8 @@ def init_db():
 
 init_db()
 
+DB_PATH = os.path.join(os.path.dirname(__file__), 'scraped_data.db')
+
 # User class for authentication
 class User:
     def __init__(self, id, username):
