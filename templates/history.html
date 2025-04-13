@@ -2,28 +2,28 @@
 {% block title %}History - Review Miner{% endblock %}
 {% block content %}
 <div class="container mt-4">
-    <h2>Your Scraping History</h2>
-    {% if products|length > 0 %}
-    <table class="table table-striped">
-        <thead>
-            <tr>
-                <th>Product</th>
-                <th>Average Rating</th>
-                <th>Action</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for p in products %}
-            <tr>
-                <td>{{ p.product }}</td>
-                <td>{{ avg_ratings[p.product]|default(0.0)|round(1) }}</td>
-                <td><a href="{{ url_for('history_result', product=p.product, site=p.site) }}" class="btn btn-primary btn-sm">View Details</a></td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <h2>Search History</h2>
+    {% if products %}
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Product</th>
+                    <th>Average Rating</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for product in products %}
+                <tr>
+                    <td>{{ product }}</td>
+                    <td>{{ avg_ratings[product]|round(1) }}</td>
+                    <td><a href="{{ url_for('history_result', product=product) }}" class="btn btn-primary">Show</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     {% else %}
-    <p>No scraping history available. Start by mining some reviews!</p>
+        <p>No history found.</p>
     {% endif %}
 </div>
 {% endblock %}

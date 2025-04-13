@@ -1,5 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session
-from flask_jwt_extended import JWTManager
+from flask import Flask, render_template, request, redirect, url_for, session, Response
 from bs4 import BeautifulSoup
 import requests
 import sqlite3
@@ -10,14 +9,14 @@ import os
 from dotenv import load_dotenv
 from urllib.parse import urlparse, urljoin
 import time
+from io import StringIO
+import csv
 
 # Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY')
-app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY')
-jwt = JWTManager(app)
 
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
@@ -26,16 +25,17 @@ HEADERS = {
 
 # Database initialization
 def init_db():
-    conn = sqlite3.connect('scraped_data.db')
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS users 
-                 (id INTEGER PRIMARY KEY, username TEXT UNIQUE, password TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS reviews 
-                 (id INTEGER PRIMARY KEY, user_id INTEGER, product TEXT, site TEXT, name TEXT, rating INTEGER, 
-                  comment_head TEXT, comment TEXT, reviewed_on TEXT, scraped_at TIMESTAMP,
-                  FOREIGN KEY(user_id) REFERENCES users(id))''')
-    conn.commit()
-    conn.close()
+    with sqlite3.connect('scraped_data.db') as conn:
+        c = conn.cursor()
+        c.execute('''CREATE TABLE IF NOT EXISTS users 
+                     (id INTEGER PRIMARY KEY, username TEXT UNIQUE, password TEXT)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS reviews 
+                     (id INTEGER PRIMARY KEY, user_id INTEGER, product TEXT, site TEXT, name TEXT, rating INTEGER, 
+                      comment_head TEXT, comment TEXT, reviewed_on TEXT, scraped_at TIMESTAMP,
+                      FOREIGN KEY(user_id) REFERENCES users(id))''')
+        c.execute('''CREATE TABLE IF NOT EXISTS contacts 
+                     (id INTEGER PRIMARY KEY, name TEXT, email TEXT, message TEXT, submitted_at TIMESTAMP)''')
+        conn.commit()
 
 init_db()
 
@@ -54,11 +54,10 @@ class User:
 @app.before_request
 def load_user():
     if 'user_id' in session:
-        conn = sqlite3.connect('scraped_data.db')
-        c = conn.cursor()
-        c.execute('SELECT id, username FROM users WHERE id = ?', (session['user_id'],))
-        user_data = c.fetchone()
-        conn.close()
+        with sqlite3.connect('scraped_data.db') as conn:
+            c = conn.cursor()
+            c.execute('SELECT id, username FROM users WHERE id = ?', (session['user_id'],))
+            user_data = c.fetchone()
         if user_data:
             request.current_user = User(user_data[0], user_data[1])
         else:
@@ -67,7 +66,7 @@ def load_user():
         request.current_user = None
 
 # Scrape reviews function for Flipkart
-def scrape_reviews(all_reviews_url, num_reviews, product_name, site):
+def scrape_reviews(all_reviews_url, num_reviews, product_name):
     reviews = []
     page_url = all_reviews_url
     base_url = 'https://www.flipkart.com'
@@ -90,7 +89,7 @@ def scrape_reviews(all_reviews_url, num_reviews, product_name, site):
                 break
             review = {}
             review['Product'] = product_name
-            review['Site'] = site
+            review['Site'] = 'flipkart'
             review['Name'] = container.find('p', class_='AwS1CA').text if container.find('p', class_='AwS1CA') else 'Anonymous'
             rating_text = container.find('div', class_='XQDdHH').text if container.find('div', class_='XQDdHH') else 'N/A'
             review['Rating'] = int(rating_text[0]) if rating_text != 'N/A' and rating_text[0].isdigit() else 0
@@ -104,42 +103,6 @@ def scrape_reviews(all_reviews_url, num_reviews, product_name, site):
         next_href = next_button['href'] if next_button and next_button.get('href') else None
         page_url = urljoin(base_url, next_href) if next_href else None
         time.sleep(1)  # Delay to avoid rate limits
-
-    return reviews
-
-# Scrape reviews function for Amazon from product detail page
-def scrape_amazon_reviews(product_url, site):
-    try:
-        response = requests.get(product_url, headers=HEADERS)
-        response.raise_for_status()
-    except requests.exceptions.RequestException as e:
-        raise Exception(f"Error fetching product page: {str(e)}")
-
-    soup = BeautifulSoup(response.text, 'html.parser')
-    review_section = soup.find('div', class_='card-padding')
-    if not review_section:
-        return []
-
-    # Find all review items within the card-padding section
-    review_containers = review_section.find_all('li', attrs={'data-hook': 'review'})
-    reviews = []
-
-    for container in review_containers:
-        review = {}
-        review['Product'] = soup.title.text.split(":")[-1].strip()[:50]
-        review['Site'] = site
-        name_tag = container.find('span', class_='a-profile-name')
-        review['Name'] = name_tag.text.strip() if name_tag else 'Anonymous'
-        rating_tag = container.find('i', attrs={'data-hook': 'review-star-rating'})
-        rating_text = rating_tag.find('span', class_='a-icon-alt').text if rating_tag else 'N/A'
-        review['Rating'] = int(float(rating_text.split()[0])) if rating_text != 'N/A' and rating_text[0].isdigit() else 0
-        heading_tag = container.find('a', attrs={'data-hook': 'review-title'})
-        review['CommentHead'] = heading_tag.find('span').text.strip() if heading_tag and heading_tag.find('span') else 'No Heading'
-        comment_tag = container.find('span', attrs={'data-hook': 'review-body'})
-        review['Comment'] = comment_tag.text.strip() if comment_tag else 'No Comment'
-        date_tag = container.find('span', attrs={'data-hook': 'review-date'})
-        review['Reviewed On'] = date_tag.text.strip() if date_tag else 'Unknown Date'
-        reviews.append(review)
 
     return reviews
 
@@ -169,11 +132,10 @@ def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        conn = sqlite3.connect('scraped_data.db')
-        c = conn.cursor()
-        c.execute('SELECT id, username, password FROM users WHERE username = ?', (username,))
-        user = c.fetchone()
-        conn.close()
+        with sqlite3.connect('scraped_data.db') as conn:
+            c = conn.cursor()
+            c.execute('SELECT id, username, password FROM users WHERE username = ?', (username,))
+            user = c.fetchone()
         if user and check_password_hash(user[2], password):
             session['user_id'] = user[0]
             return redirect(url_for('index'))
@@ -189,19 +151,17 @@ def signup():
         if password != password2:
             return render_template('signup.html', error='Passwords do not match', current_user=request.current_user)
         hashed_password = generate_password_hash(password)
-        conn = sqlite3.connect('scraped_data.db')
-        c = conn.cursor()
-        try:
-            c.execute('INSERT INTO users (username, password) VALUES (?, ?)', (username, hashed_password))
-            conn.commit()
-            c.execute('SELECT id FROM users WHERE username = ?', (username,))
-            user_id = c.fetchone()[0]
-            session['user_id'] = user_id
-            return redirect(url_for('index'))
-        except sqlite3.IntegrityError:
-            return render_template('signup.html', error='Username already exists', current_user=request.current_user)
-        finally:
-            conn.close()
+        with sqlite3.connect('scraped_data.db') as conn:
+            c = conn.cursor()
+            try:
+                c.execute('INSERT INTO users (username, password) VALUES (?, ?)', (username, hashed_password))
+                conn.commit()
+                c.execute('SELECT id FROM users WHERE username = ?', (username,))
+                user_id = c.fetchone()[0]
+                session['user_id'] = user_id
+                return redirect(url_for('index'))
+            except sqlite3.IntegrityError:
+                return render_template('signup.html', error='Username already exists', current_user=request.current_user)
     return render_template('signup.html', current_user=request.current_user)
 
 @app.route('/logout')
@@ -214,66 +174,56 @@ def review():
     if not request.current_user:
         return redirect(url_for('login'))
     product_url = request.form['product_url']
-    num_reviews = min(int(request.form['num_reviews']), 100)
+    try:
+        num_reviews = min(int(request.form['num_reviews']), 100)
+        if num_reviews <= 0:
+            raise ValueError("Number of reviews must be positive.")
+    except ValueError:
+        return render_template('index.html', error="Number of reviews must be a valid positive integer.", current_user=request.current_user)
+
+    if not product_url.startswith('https://www.flipkart.com/') or '/p/' not in product_url:
+        return render_template('index.html', error="Invalid Flipkart product URL. Please provide a valid product page URL.", current_user=request.current_user)
 
     parsed = urlparse(product_url)
-    domain = parsed.netloc.lower()
-    if 'flipkart.com' in domain:
-        site = 'flipkart'
-    elif 'amazon.in' in domain:
-        site = 'amazon'
-    else:
-        return render_template('index.html', error="Unsupported URL. Please provide a Flipkart or Amazon product URL.", current_user=request.current_user)
+    path_parts = parsed.path.split('/')
+    if len(path_parts) < 3 or path_parts[2] != 'p':
+        return render_template('index.html', error="Invalid Flipkart product URL. URL must contain '/p/' indicating a product page.", current_user=request.current_user)
+    slug = path_parts[1]
+    product_name_full = slug.replace('-', ' ')
+    product_name = ' '.join(product_name_full.split()[:10])
+    reviews_url = product_url.replace('/p/', '/product-reviews/')
 
-    if site == 'flipkart':
-        if not product_url.startswith('https://www.flipkart.com/') or '/p/' not in product_url:
-            return render_template('index.html', error="Invalid Flipkart product URL. Please provide a valid product page URL.", current_user=request.current_user)
-        path_parts = parsed.path.split('/')
-        if len(path_parts) < 3 or path_parts[2] != 'p':
-            return render_template('index.html', error="Invalid Flipkart product URL. URL must contain '/p/' indicating a product page.", current_user=request.current_user)
-        slug = path_parts[1]
-        product_name_full = slug.replace('-', ' ')
-        product_name = ' '.join(product_name_full.split()[:10])
-        reviews_url = product_url.replace('/p/', '/product-reviews/')
-        try:
-            reviews = scrape_reviews(reviews_url, num_reviews, product_name, site)
-        except Exception as e:
-            return render_template('index.html', error=str(e), current_user=request.current_user)
-    elif site == 'amazon':
-        try:
-            reviews = scrape_amazon_reviews(product_url, site)
-        except Exception as e:
-            return render_template('index.html', error=str(e), current_user=request.current_user)
+    try:
+        reviews = scrape_reviews(reviews_url, num_reviews, product_name)
+    except Exception as e:
+        return render_template('index.html', error=str(e), current_user=request.current_user)
 
     if not reviews:
-        message = "Amazon restricts access to all reviews. Search for this product on Flipkart to see more reviews." if site == 'amazon' else "No reviews found for this product."
-        return render_template('results.html', reviews=[], product="", site=site, avg_rating=0, sort_by="", current_user=request.current_user, message=message)
+        return render_template('results.html', reviews=[], product=product_name, site='flipkart', avg_rating=0, sort_by="", current_user=request.current_user, message="No reviews found for this product.")
 
-    conn = sqlite3.connect('scraped_data.db')
-    c = conn.cursor()
-    for review in reviews:
-        c.execute('''INSERT INTO reviews (user_id, product, site, name, rating, comment_head, comment, reviewed_on, scraped_at)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
-                  (request.current_user.id, review['Product'], review['Site'], review['Name'], review['Rating'], 
-                   review['CommentHead'], review['Comment'], review['Reviewed On'], datetime.now()))
-    conn.commit()
-    conn.close()
+    with sqlite3.connect('scraped_data.db') as conn:
+        c = conn.cursor()
+        for review in reviews:
+            c.execute('''INSERT INTO reviews (user_id, product, site, name, rating, comment_head, comment, reviewed_on, scraped_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
+                      (request.current_user.id, review['Product'], review['Site'], review['Name'], review['Rating'], 
+                       review['CommentHead'], review['Comment'], review['Reviewed On'], datetime.now()))
+        conn.commit()
 
-    return redirect(url_for('results', product=reviews[0]['Product'], site=site))
+    return redirect(url_for('results', product=reviews[0]['Product']))
 
-@app.route('/results/<product>/<site>', methods=['GET'])
-def results(product, site):
+@app.route('/results/<product>', methods=['GET'])
+def results(product):
     if not request.current_user:
         return redirect(url_for('login'))
-    conn = sqlite3.connect('scraped_data.db')
-    c = conn.cursor()
-    c.execute('SELECT product, site, name, rating, comment_head, comment, reviewed_on FROM reviews WHERE user_id = ? AND product = ? AND site = ?', 
-              (request.current_user.id, product, site))
-    reviews = [dict(zip(['Product', 'Site', 'Name', 'Rating', 'CommentHead', 'Comment', 'Reviewed On'], row)) for row in c.fetchall()]
-    conn.close()
+    with sqlite3.connect('scraped_data.db') as conn:
+        c = conn.cursor()
+        c.execute('SELECT product, site, name, rating, comment_head, comment, reviewed_on FROM reviews WHERE user_id = ? AND product = ?', 
+                  (request.current_user.id, product))
+        reviews = [dict(zip(['Product', 'Site', 'Name', 'Rating', 'CommentHead', 'Comment', 'Reviewed On'], row)) for row in c.fetchall()]
     
     if not reviews:
-        return "No reviews found for this product", 404
+        return render_template('results.html', reviews=[], product=product, site='flipkart', avg_rating=0, sort_by="", current_user=request.current_user, message="No reviews found for this product.")
     
     sort_by = request.args.get('sort_by', '')
     if sort_by == 'rating_asc':
@@ -286,9 +236,85 @@ def results(product, site):
         reviews.sort(key=lambda x: parse_reviewed_on(x['Reviewed On']), reverse=True)
 
     avg_rating = sum(r['Rating'] for r in reviews) / len(reviews) if reviews else 0
-    message = "Amazon restricts access to all reviews. Search for this product on Flipkart to see more reviews." if site == 'amazon' else ""
-    return render_template('results.html', reviews=reviews, product=product, site=site, avg_rating=avg_rating, 
-                           sort_by=sort_by, current_user=request.current_user, message=message)
+    return render_template('results.html', reviews=reviews, product=product, site='flipkart', avg_rating=avg_rating, 
+                           sort_by=sort_by, current_user=request.current_user)
+
+@app.route('/history')
+def history():
+    if not request.current_user:
+        return redirect(url_for('login'))
+    with sqlite3.connect('scraped_data.db') as conn:
+        c = conn.cursor()
+        c.execute('SELECT DISTINCT product, site FROM reviews WHERE user_id = ? ORDER BY scraped_at DESC', 
+                  (request.current_user.id,))
+        products = [dict(zip(['product', 'site'], row)) for row in c.fetchall()]
+        avg_ratings = {}
+        for p in products:
+            c.execute('SELECT AVG(rating) FROM reviews WHERE user_id = ? AND product = ?', 
+                      (request.current_user.id, p['product']))
+            avg_rating = c.fetchone()[0]
+            avg_ratings[(p['product'], p['site'])] = avg_rating if avg_rating else 0.0
+    return render_template('history.html', products=products, avg_ratings=avg_ratings, current_user=request.current_user)
+
+@app.route('/download_csv/<product>')
+def download_csv(product):
+    if not request.current_user:
+        return redirect(url_for('login'))
+    with sqlite3.connect('scraped_data.db') as conn:
+        c = conn.cursor()
+        c.execute('SELECT product, site, name, rating, comment_head, comment, reviewed_on FROM reviews WHERE user_id = ? AND product = ?', 
+                  (request.current_user.id, product))
+        reviews = [dict(zip(['Product', 'Site', 'Name', 'Rating', 'CommentHead', 'Comment', 'Reviewed On'], row)) for row in c.fetchall()]
+    
+    if not reviews:
+        return render_template('results.html', reviews=[], product=product, site='flipkart', avg_rating=0, sort_by="", current_user=request.current_user, message="No reviews found for this product.")
+    
+    si = StringIO()
+    cw = csv.writer(si)
+    cw.writerow(['Product', 'Site', 'Customer Name', 'Rating', 'Heading', 'Comment', 'Reviewed On'])
+    for review in reviews:
+        cw.writerow([review['Product'], review['Site'], review['Name'], review['Rating'], review['CommentHead'], review['Comment'], review['Reviewed On']])
+    
+    output = si.getvalue()
+    si.close()
+    
+    return Response(
+        output,
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment;filename={product}_reviews.csv"}
+    )
+
+@app.route('/about')
+def about():
+    return render_template('about.html', current_user=request.current_user)
+
+@app.route('/contact', methods=['GET', 'POST'])
+def contact():
+    if request.method == 'POST':
+        name = request.form.get('name')
+        email = request.form.get('email')
+        message = request.form.get('message')
+
+        # Basic validation
+        if not name or not email or not message:
+            return render_template('contact.html', error="All fields are required.", current_user=request.current_user)
+        if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+            return render_template('contact.html', error="Invalid email address.", current_user=request.current_user)
+        if len(name) > 100 or len(message) > 1000:
+            return render_template('contact.html', error="Name or message too long.", current_user=request.current_user)
+
+        try:
+            with sqlite3.connect('scraped_data.db') as conn:
+                c = conn.cursor()
+                c.execute('''INSERT INTO contacts (name, email, message, submitted_at)
+                             VALUES (?, ?, ?, ?)''', 
+                          (name, email, message, datetime.now()))
+                conn.commit()
+            return render_template('contact.html', success="Your message has been sent successfully!", current_user=request.current_user)
+        except Exception as e:
+            return render_template('contact.html', error=f"An error occurred: {str(e)}", current_user=request.current_user)
+
+    return render_template('contact.html', current_user=request.current_user)
 
 if __name__ == '__main__':
     app.run(debug=True)

@@ -3,13 +3,10 @@
 {% block content %}
 <div class="form-container">
     <h2 class="text-center mb-4">Search Product Reviews</h2>
-    {% if error %}
-        <div class="alert alert-danger">{{ error }}</div>
-    {% endif %}
     <form action="{{ url_for('review') }}" method="POST">
         <div class="mb-3">
-            <label for="product_url" class="form-label">Enter Product URL (Flipkart or Amazon):</label>
-            <input type="url" class="form-control" id="product_url" name="product_url" required placeholder="e.g., https://www.flipkart.com/... or https://www.amazon.in/...">
+            <label for="product_url" class="form-label">Enter Flipkart Product URL:</label>
+            <input type="url" class="form-control" id="product_url" name="product_url" required placeholder="e.g., https://www.flipkart.com/...">
         </div>
         <div class="mb-3">
             <label for="num_reviews" class="form-label">Number of Reviews (max 100):</label>

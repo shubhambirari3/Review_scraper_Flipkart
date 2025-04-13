@@ -2,7 +2,7 @@
 {% block title %}Results - Review Miner{% endblock %}
 {% block content %}
 <div class="container mt-4">
-    <h2> {% if site == 'flipkart' %}Flipkart.com{% else %}Amazon.in{% endif %} | {{ product }}</h2>
+    <h2>Fipkart.com | {{ product }}</h2>
     <div class="mb-3">
         <p>Total Reviews: {{ reviews|length }} | Average Rating: {{ avg_rating|round(1) }} / 5</p>
         <form method="GET" class="d-flex flex-wrap gap-2">
@@ -13,7 +13,7 @@
                 <option value="date_asc" {% if sort_by == 'date_asc' %}selected{% endif %}>Reviewed On: Ascending</option>
                 <option value="date_desc" {% if sort_by == 'date_desc' %}selected{% endif %}>Reviewed On: Descending</option>
             </select>
-            <a href="{{ url_for('download_csv', product=product, site=site) }}" class="btn btn-success">Download CSV</a>
+            <a href="{{ url_for('download_csv', product=product) }}" class="btn btn-success">Download CSV</a>
         </form>
     </div>
     <table class="table table-striped">
