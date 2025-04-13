@@ -1,2 +1,3 @@
+// filepath: c:\Users\shubh\Projects\Review_Scrapper_Flipkart\review_scrapper_jwt\.gitignore
 .env
 scraped_data.db
