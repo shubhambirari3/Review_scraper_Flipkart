@@ -14,6 +14,7 @@ import csv
 import logging
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+import random
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -29,10 +30,17 @@ app.secret_key = os.getenv('FLASK_SECRET_KEY') or 'fallback-secret-key'  # Fallb
 DB_PATH = os.path.join(os.path.dirname(__file__), 'scraped_data.db')
 
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.5',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Accept-Encoding': 'gzip, deflate, br',
     'Connection': 'keep-alive',
+    'DNT': '1',  # Do Not Track
+    'Upgrade-Insecure-Requests': '1',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-User': '?1',
 }
 
 # Database initialization
@@ -108,6 +116,7 @@ def scrape_reviews(all_reviews_url, num_reviews, product_name):
     while len(reviews) < num_reviews and page_url:
         try:
             response = session.get(page_url, headers=HEADERS, timeout=20)
+            logger.info(f"Response status: {response.status_code} for {page_url}")
             response.raise_for_status()
             logger.info(f"Fetched page: {page_url}")
         except requests.exceptions.RequestException as e:
@@ -140,7 +149,7 @@ def scrape_reviews(all_reviews_url, num_reviews, product_name):
         next_button = soup.find('a', class_='_9QVEpD', string=lambda t: 'Next' in t if t else False)
         next_href = next_button['href'] if next_button and next_button.get('href') else None
         page_url = urljoin(base_url, next_href) if next_href else None
-        time.sleep(8)
+        time.sleep(random.uniform(8, 12))  # Random delay between 8-12s
 
     return reviews
 
