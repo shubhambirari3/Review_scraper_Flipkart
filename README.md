@@ -1,5 +1,9 @@
 # Review Scrapper 
 
+# https://review-scraper-vs4j.onrender.com
+
+**Note**: If the data scraping fails, it is possible that Flipkart is flagging the server IP from Render (likely a shared cloud IP) as suspicious and blocking access.Try this project on localserver or Optionally, prepare for proxy use if blocks persist.
+
 ## About the Project
 
 The **Review Scrapper** is a Flask-based application designed to scrape reviews from Flipkart.com and provide secure access to the data using session-based authentication. It combines Flask for web development, BeautifulSoup for scraping, and SQLite for data storage.

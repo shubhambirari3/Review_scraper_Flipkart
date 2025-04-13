@@ -116,7 +116,6 @@ def scrape_reviews(all_reviews_url, num_reviews, product_name):
     while len(reviews) < num_reviews and page_url:
         try:
             response = session.get(page_url, headers=HEADERS, timeout=20)
-            logger.info(f"Response status: {response.status_code} for {page_url}")
             response.raise_for_status()
             logger.info(f"Fetched page: {page_url}")
         except requests.exceptions.RequestException as e:
@@ -149,7 +148,7 @@ def scrape_reviews(all_reviews_url, num_reviews, product_name):
         next_button = soup.find('a', class_='_9QVEpD', string=lambda t: 'Next' in t if t else False)
         next_href = next_button['href'] if next_button and next_button.get('href') else None
         page_url = urljoin(base_url, next_href) if next_href else None
-        time.sleep(random.uniform(8, 12))  # Random delay between 8-12s
+        time.sleep(8)
 
     return reviews
 
