@@ -13,11 +13,11 @@
                 </tr>
             </thead>
             <tbody>
-                {% for product in products %}
+                {% for p in products %}
                 <tr>
-                    <td>{{ product }}</td>
-                    <td>{{ avg_ratings[product]|round(1) }}</td>
-                    <td><a href="{{ url_for('history_result', product=product) }}" class="btn btn-primary">Show</a></td>
+                    <td>{{ p.product }}</td>
+                    <td>{{ (avg_ratings[(p.product, p.site)]|default(0.0))|round(1) }}</td>
+                    <td><a href="{{ url_for('history_result', product=p.product) }}" class="btn btn-primary">Show</a></td>
                 </tr>
                 {% endfor %}
             </tbody>

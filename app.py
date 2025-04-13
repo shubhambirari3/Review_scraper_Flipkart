@@ -27,6 +27,7 @@ HEADERS = {
 def init_db():
     with sqlite3.connect('scraped_data.db') as conn:
         c = conn.cursor()
+        # Create tables if they don't exist
         c.execute('''CREATE TABLE IF NOT EXISTS users 
                      (id INTEGER PRIMARY KEY, username TEXT UNIQUE, password TEXT)''')
         c.execute('''CREATE TABLE IF NOT EXISTS reviews 
@@ -35,6 +36,12 @@ def init_db():
                       FOREIGN KEY(user_id) REFERENCES users(id))''')
         c.execute('''CREATE TABLE IF NOT EXISTS contacts 
                      (id INTEGER PRIMARY KEY, name TEXT, email TEXT, message TEXT, submitted_at TIMESTAMP)''')
+        
+        # Check if 'site' column exists in reviews table and add it if missing
+        c.execute("PRAGMA table_info(reviews)")
+        columns = [col[1] for col in c.fetchall()]
+        if 'site' not in columns:
+            c.execute("ALTER TABLE reviews ADD COLUMN site TEXT")
         conn.commit()
 
 init_db()
@@ -255,6 +262,33 @@ def history():
             avg_rating = c.fetchone()[0]
             avg_ratings[(p['product'], p['site'])] = avg_rating if avg_rating else 0.0
     return render_template('history.html', products=products, avg_ratings=avg_ratings, current_user=request.current_user)
+
+@app.route('/history_result/<product>')
+def history_result(product):
+    if not request.current_user:
+        return redirect(url_for('login'))
+    with sqlite3.connect('scraped_data.db') as conn:
+        c = conn.cursor()
+        c.execute('SELECT product, site, name, rating, comment_head, comment, reviewed_on FROM reviews WHERE user_id = ? AND product = ?', 
+                  (request.current_user.id, product))
+        reviews = [dict(zip(['Product', 'Site', 'Name', 'Rating', 'CommentHead', 'Comment', 'Reviewed On'], row)) for row in c.fetchall()]
+    
+    if not reviews:
+        return render_template('history_result.html', reviews=[], product=product, site='flipkart', avg_rating=0, sort_by="", current_user=request.current_user, message="No reviews found for this product.")
+    
+    sort_by = request.args.get('sort_by', '')
+    if sort_by == 'rating_asc':
+        reviews.sort(key=lambda x: x['Rating'])
+    elif sort_by == 'rating_desc':
+        reviews.sort(key=lambda x: x['Rating'], reverse=True)
+    elif sort_by == 'date_asc':
+        reviews.sort(key=lambda x: parse_reviewed_on(x['Reviewed On']))
+    elif sort_by == 'date_desc':
+        reviews.sort(key=lambda x: parse_reviewed_on(x['Reviewed On']), reverse=True)
+
+    avg_rating = sum(r['Rating'] for r in reviews) / len(reviews) if reviews else 0
+    return render_template('history_result.html', reviews=reviews, product=product, site='flipkart', avg_rating=avg_rating, 
+                           sort_by=sort_by, current_user=request.current_user)
 
 @app.route('/download_csv/<product>')
 def download_csv(product):
