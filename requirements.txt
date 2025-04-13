@@ -12,9 +12,9 @@ Jinja2
 MarkupSafe==2.1.1
 # requests==2.24.0
 soupsieve==2.0.1
-urllib3==1.25.10
+urllib3==2.4.0
 # Werkzeug==1.0.1
-six==1.16.0
+six==1.17.0
 pymongo
 Flask==2.3.2
 requests==2.31.0
@@ -23,4 +23,5 @@ beautifulsoup4==4.12.2
 Flask-JWT-Extended==4.5.3
 PyJWT==2.8.0
 Werkzeug==2.3.7
+dotenv 
  # Built-in with Python, no need to install separately
